@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 from datetime import datetime
+import requests
+import json
 
 # Set page configuration
 st.set_page_config(
@@ -12,7 +14,36 @@ st.set_page_config(
 )
 
 # Sidebar for inputs
-st.sidebar.header("Competitor Data Input")
+st.sidebar.header("Configuration")
+
+# API Key input
+api_key = st.sidebar.text_input("Google AI Studio API Key", type="password")
+research_topic = st.sidebar.text_input("Research Topic for Competitive Analysis")
+
+# Function to get AI analysis
+def get_ai_analysis(api_key, topic):
+    if not api_key or not topic:
+        return "Please provide both API key and research topic"
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    data = {
+        "contents": [{
+            "parts": [{"text": f"Provide a competitive analysis for {topic} including key players, market trends, and insights"}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        result = response.json()
+        return result['candidates'][0]['content']['parts'][0]['text']
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching AI analysis: {str(e)}"
+    except (KeyError, IndexError):
+        return "Error parsing AI response"
 
 # Initialize session state for storing data
 if 'competitors' not in st.session_state:
@@ -38,6 +69,16 @@ if st.sidebar.button("Add Competitor"):
 # Main content
 st.title("Competitive Analysis Dashboard")
 st.write(f"Current Date: {datetime.now().strftime('%B %d, %Y')}")
+
+# AI Analysis Section
+if st.sidebar.button("Get AI Analysis"):
+    with st.spinner("Fetching AI analysis..."):
+        analysis = get_ai_analysis(api_key, research_topic)
+        st.session_state.ai_analysis = analysis
+
+if 'ai_analysis' in st.session_state:
+    st.header("AI-Generated Competitive Analysis")
+    st.write(st.session_state.ai_analysis)
 
 # Competitor data input section
 st.header("Enter Competitor Metrics")
@@ -111,33 +152,25 @@ if st.session_state.competitors:
     col1, col2 = st.columns(2)
     
     with col1:
-        # Revenue Comparison
         fig1 = px.bar(df, x=df.index, y='revenue', title="Revenue Comparison ($M)")
         st.plotly_chart(fig1, use_container_width=True)
         
-        # Market Share Pie Chart
         fig2 = px.pie(df, values='market_share', names=df.index, title="Market Share Distribution")
         st.plotly_chart(fig2, use_container_width=True)
     
     with col2:
-        # Growth Rate Comparison
         fig3 = px.bar(df, x=df.index, y='growth_rate', title="Growth Rate Comparison (%)")
         st.plotly_chart(fig3, use_container_width=True)
         
-        # Customer Satisfaction
         fig4 = px.bar(df, x=df.index, y='customer_satisfaction', 
                      title="Customer Satisfaction (1-100)")
         st.plotly_chart(fig4, use_container_width=True)
     
-    # Additional Visualizations
     st.subheader("Additional Metrics")
-    
-    # Scatter plot: Employees vs Revenue
     fig5 = px.scatter(df, x='employees', y='revenue', size='product_count',
                      hover_name=df.index, title="Employees vs Revenue (size = Product Count)")
     st.plotly_chart(fig5, use_container_width=True)
     
-    # Data Table
     st.subheader("Raw Data")
     st.dataframe(df.style.format({
         'revenue': '${:,.2f}',
@@ -148,7 +181,6 @@ if st.session_state.competitors:
         'product_count': '{:.0f}'
     }))
 
-    # Export functionality
     st.subheader("Export Data")
     csv = df.to_csv()
     st.download_button(
@@ -157,7 +189,6 @@ if st.session_state.competitors:
         file_name='competitive_analysis.csv',
         mime='text/csv',
     )
-
 else:
     st.write("Please add at least one competitor using the sidebar to begin analysis.")
 
@@ -169,11 +200,11 @@ chart_type = st.sidebar.selectbox(
 )
 show_grid = st.sidebar.checkbox("Show Gridlines", value=True)
 
-# Instructions
 with st.sidebar.expander("How to Use"):
     st.write("""
-    1. Add competitors using the input field above
-    2. Enter metrics for each competitor in their respective tabs
-    3. View automatically generated visualizations
-    4. Download the data as CSV for further analysis
+    1. Enter your Google AI Studio API key
+    2. Specify your research topic
+    3. Click 'Get AI Analysis' for AI-generated insights
+    4. Add competitors and their metrics
+    5. View visualizations and download data
     """)
